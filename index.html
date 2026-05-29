@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Голосовой журнал керна</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --success: #16a34a;
+      --danger: #dc2626;
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --text: #1e293b;
+      --muted: #64748b;
+      --border: #e2e8f0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 1rem;
+    }
+
+    .container { max-width: 680px; margin: 0 auto; }
+
+    header { text-align: center; padding: 2rem 0 1.5rem; }
+    header h1 { font-size: 1.6rem; font-weight: 700; }
+    header p  { color: var(--muted); margin-top: 0.4rem; font-size: 0.85rem; }
+
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    .card h2 {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+
+    .record-area {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.25rem;
+      padding: 0.75rem 0;
+    }
+
+    .record-btn {
+      width: 90px; height: 90px;
+      border-radius: 50%;
+      border: none;
+      background: var(--primary);
+      color: white;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      transition: background 0.2s, transform 0.15s;
+      box-shadow: 0 4px 14px rgba(37,99,235,0.35);
+    }
+    .record-btn svg { width: 28px; height: 28px; }
+    .record-btn:hover:not(:disabled) { background: var(--primary-dark); transform: scale(1.05); }
+
+    .record-btn.recording {
+      background: var(--danger);
+      box-shadow: 0 4px 14px rgba(220,38,38,0.4);
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50%       { transform: scale(1.08); }
+    }
+
+    .record-btn:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; box-shadow: none; }
+
+    .status-text { font-size: 0.9rem; color: var(--muted); text-align: center; min-height: 1.3em; }
+    .status-text.active  { color: var(--primary); font-weight: 500; }
+    .status-text.success { color: var(--success); font-weight: 500; }
+    .status-text.error   { color: var(--danger); }
+
+    .transcript-box {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      font-size: 0.95rem;
+      line-height: 1.65;
+      color: var(--text);
+      min-height: 3.5em;
+      white-space: pre-wrap;
+    }
+
+    .fields-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; }
+    @media (max-width: 480px) { .fields-grid { grid-template-columns: 1fr; } }
+
+    .field-item {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 0.85rem;
+    }
+    .field-item.wide { grid-column: 1 / -1; }
+
+    .field-label {
+      font-size: 0.68rem;
+      color: var(--muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .field-value { font-size: 0.92rem; color: var(--text); margin-top: 3px; font-weight: 500; }
+
+    .save-btn {
+      width: 100%;
+      margin-top: 0.75rem;
+      padding: 0.9rem;
+      background: var(--success);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.98rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .save-btn:hover:not(:disabled) { background: #15803d; }
+    .save-btn:disabled { background: #86efac; cursor: not-allowed; }
+
+    .hidden { display: none; }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15em 0.55em;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      background: #dbeafe;
+      color: #1d4ed8;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    .no-speech-warning {
+      background: #fef9c3;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      font-size: 0.88rem;
+      color: #92400e;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>🎙 Голосовой журнал керна</h1>
+    <p>Инициатива #2 | Управление комплексных исследований керна</p>
+  </header>
+
+  <div class="card">
+    <div id="noSpeechWarning" class="no-speech-warning hidden">
+      Голосовой ввод работает только в Chrome и браузерах на Chromium.
+    </div>
+    <div class="record-area">
+      <button class="record-btn" id="recordBtn" onclick="toggleRecord()">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 1a4 4 0 0 1 4 4v7a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm-1 18.93V22h2v-2.07A8 8 0 0 0 20 12h-2a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.93z"/>
+        </svg>
+        <span id="btnLabel">ЗАПИСЬ</span>
+      </button>
+      <div class="status-text" id="statusText">Нажмите, чтобы начать</div>
+    </div>
+  </div>
+
+  <div class="card hidden" id="transcriptCard">
+    <h2>Транскрипт речи</h2>
+    <div class="transcript-box" id="transcriptBox"></div>
+  </div>
+
+  <div class="card hidden" id="dataCard">
+    <h2>Структурированные данные <span class="badge">Gemini</span></h2>
+    <div class="fields-grid" id="fieldsGrid"></div>
+    <button class="save-btn" id="saveBtn" onclick="saveToSheets()">
+      Сохранить в Google Sheets
+    </button>
+  </div>
+
+</div>
+<script>
+// Значения подставляются build-скриптом — не редактировать вручную
+const GEMINI_API_KEY  = "AIzaSyBDRwmcMyaN5Fm287l8QmXxsSyJsGdy13c";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzv6Y2oI9_Y_Rcd4tB9nOl-E8iWP2u5lTqptUJC9tO_DGk6y3xZWcD_bREf4joYM3Ub/exec";
+
+const GEMINI_MODEL  = "gemini-2.5-flash-lite";
+const GEMINI_SYSTEM = `Ты геолог-аналитик. Из текста устного описания образца керна извлеки структурированные данные и верни ТОЛЬКО валидный JSON без дополнительного текста.
+
+Формат:
+{
+  "ID_образца": "...",
+  "Скважина": "...",
+  "Горизонт": "...",
+  "Глубина_м": 0.0,
+  "Дата_отбора": "ДД.ММ.ГГГГ",
+  "Литология": "...",
+  "Пористость_проц": 0.0,
+  "Нефтенасыщение_проц": 0.0,
+  "Водонасыщение_проц": 0.0,
+  "Трещиноватость": "Есть/Нет",
+  "Люминесценция": "...",
+  "Сохранность": "...",
+  "Рекомендация": "..."
+}
+
+Если поле не упоминается — используй null. Числа без единиц измерения.`;
+
+const FIELD_LABELS = {
+  ID_образца:          "ID образца",
+  Скважина:            "Скважина",
+  Горизонт:            "Горизонт",
+  Глубина_м:           "Глубина, м",
+  Дата_отбора:         "Дата отбора",
+  Литология:           "Литология",
+  Пористость_проц:     "Пористость, %",
+  Нефтенасыщение_проц: "Нефтенасыщение, %",
+  Водонасыщение_проц:  "Водонасыщение, %",
+  Трещиноватость:      "Трещиноватость",
+  Люминесценция:       "Люминесценция",
+  Сохранность:         "Сохранность",
+  Рекомендация:        "Рекомендация",
+};
+const WIDE_FIELDS = new Set(["Литология", "Сохранность", "Рекомендация"]);
+
+let recognition = null;
+let isRecording = false;
+let currentData = null;
+
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SpeechRec) {
+  show("noSpeechWarning");
+  document.getElementById("recordBtn").disabled = true;
+  setStatus("Голосовой ввод недоступен — используйте Chrome", "error");
+}
+
+function setStatus(text, cls = "") {
+  const el    = document.getElementById("statusText");
+  el.textContent = text;
+  el.className   = "status-text " + cls;
+}
+
+function show(id) { document.getElementById(id).classList.remove("hidden"); }
+function hide(id) { document.getElementById(id).classList.add("hidden"); }
+
+function toggleRecord() { isRecording ? stopRecord() : startRecord(); }
+
+function startRecord() {
+  recognition = new SpeechRec();
+  recognition.lang            = "ru-RU";
+  recognition.continuous      = true;
+  recognition.interimResults  = true;
+  recognition.maxAlternatives = 1;
+
+  let finalText = "";
+
+  recognition.onstart = () => {
+    isRecording = true;
+    document.getElementById("recordBtn").classList.add("recording");
+    document.getElementById("btnLabel").textContent = "СТОП";
+    setStatus("Слушаю… Говорите описание образца", "active");
+    show("transcriptCard");
+    hide("dataCard");
+    document.getElementById("transcriptBox").textContent = "";
+    finalText = "";
+  };
+
+  recognition.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) finalText += t + " ";
+      else interim += t;
+    }
+    document.getElementById("transcriptBox").textContent = finalText + interim;
+  };
+
+  recognition.onerror = (e) => {
+    setStatus("Ошибка микрофона: " + e.error, "error");
+    resetBtn();
+  };
+
+  recognition.onend = () => {
+    const text = (finalText || document.getElementById("transcriptBox").textContent).trim();
+    resetBtn();
+    if (text) structureWithGemini(text);
+    else setStatus("Речь не распознана — попробуйте ещё раз", "error");
+  };
+
+  recognition.start();
+}
+
+function stopRecord() {
+  isRecording = false;
+  if (recognition) recognition.stop();
+  resetBtn();
+}
+
+function resetBtn() {
+  isRecording = false;
+  document.getElementById("recordBtn").classList.remove("recording");
+  document.getElementById("btnLabel").textContent = "ЗАПИСЬ";
+}
+
+async function structureWithGemini(text) {
+  setStatus("Структурирую через Gemini AI…", "active");
+  document.getElementById("recordBtn").disabled = true;
+
+  const url  = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const body = {
+    system_instruction: { parts: [{ text: GEMINI_SYSTEM }] },
+    contents: [{ parts: [{ text }] }]
+  };
+
+  try {
+    const res  = await fetch(url, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(body)
+    });
+    const json = await res.json();
+    let raw    = json.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    raw        = raw.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+    currentData = JSON.parse(raw);
+    currentData.транскрипт = text;
+    renderFields(currentData);
+    setStatus("Данные извлечены — проверьте и сохраните", "success");
+  } catch (err) {
+    setStatus("Ошибка Gemini: " + err.message, "error");
+  } finally {
+    document.getElementById("recordBtn").disabled = false;
+  }
+}
+
+function renderFields(data) {
+  const grid = document.getElementById("fieldsGrid");
+  grid.innerHTML = "";
+  for (const [key, label] of Object.entries(FIELD_LABELS)) {
+    const val = data[key];
+    if (val === null || val === undefined) continue;
+    const div       = document.createElement("div");
+    div.className   = "field-item" + (WIDE_FIELDS.has(label) ? " wide" : "");
+    div.innerHTML   = `<div class="field-label">${label}</div><div class="field-value">${val}</div>`;
+    grid.appendChild(div);
+  }
+  const btn       = document.getElementById("saveBtn");
+  btn.disabled    = false;
+  btn.textContent = "Сохранить в Google Sheets";
+  show("dataCard");
+}
+
+async function saveToSheets() {
+  if (!currentData) return;
+  const btn       = document.getElementById("saveBtn");
+  btn.disabled    = true;
+  btn.textContent = "Сохраняю…";
+
+  try {
+    await fetch(APPS_SCRIPT_URL, {
+      method:  "POST",
+      mode:    "no-cors",
+      headers: { "Content-Type": "text/plain" },
+      body:    JSON.stringify(currentData)
+    });
+    btn.textContent = "✓ Сохранено в Google Sheets";
+    setStatus("Запись добавлена в таблицу", "success");
+  } catch (err) {
+    btn.disabled    = false;
+    btn.textContent = "Сохранить в Google Sheets";
+    setStatus("Ошибка сохранения: " + err.message, "error");
+  }
+}
+</script>
+</body>
+</html>
