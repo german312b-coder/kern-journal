@@ -208,9 +208,12 @@
 
 </div>
 <script>
-// Значения подставляются build-скриптом — не редактировать вручную
-const GEMINI_API_KEY  = "AIzaSyBDRwmcMyaN5Fm287l8QmXxsSyJsGdy13c";
+// Apps Script URL подставляется build-скриптом
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzv6Y2oI9_Y_Rcd4tB9nOl-E8iWP2u5lTqptUJC9tO_DGk6y3xZWcD_bREf4joYM3Ub/exec";
+
+// API-ключ читается из URL-хэша: .../index.html#ВАШ_КЛЮЧ
+// Хэш никогда не отправляется на сервер — ключ безопасен в публичном репо
+const GEMINI_API_KEY = window.location.hash.slice(1).trim();
 
 const GEMINI_MODEL  = "gemini-2.5-flash-lite";
 const GEMINI_SYSTEM = `Ты геолог-аналитик. Из текста устного описания образца керна извлеки структурированные данные и верни ТОЛЬКО валидный JSON без дополнительного текста.
@@ -254,6 +257,11 @@ const WIDE_FIELDS = new Set(["Литология", "Сохранность", "Р
 let recognition = null;
 let isRecording = false;
 let currentData = null;
+
+if (!GEMINI_API_KEY) {
+  setStatus("Откройте приложение по ссылке с ключом: …/index.html#ВАШ_КЛЮЧ", "error");
+  document.getElementById("recordBtn").disabled = true;
+}
 
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (!SpeechRec) {
@@ -334,7 +342,7 @@ async function structureWithGemini(text) {
   setStatus("Структурирую через Gemini AI…", "active");
   document.getElementById("recordBtn").disabled = true;
 
-  const url  = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const url  = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
   const body = {
     system_instruction: { parts: [{ text: GEMINI_SYSTEM }] },
     contents: [{ parts: [{ text }] }]
@@ -343,18 +351,31 @@ async function structureWithGemini(text) {
   try {
     const res  = await fetch(url, {
       method:  "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_API_KEY
+      },
       body:    JSON.stringify(body)
     });
     const json = await res.json();
-    let raw    = json.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    raw        = raw.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+    if (json.error) {
+      throw new Error(`API: ${json.error.code} — ${json.error.message}`);
+    }
+    const rawText = json.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawText) {
+      const reason = json.candidates?.[0]?.finishReason || "нет ответа от модели";
+      throw new Error(reason);
+    }
+    if (!text.trim()) {
+      throw new Error("Транскрипт пустой — попробуйте записать снова");
+    }
+    let raw = rawText.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
     currentData = JSON.parse(raw);
     currentData.транскрипт = text;
     renderFields(currentData);
     setStatus("Данные извлечены — проверьте и сохраните", "success");
   } catch (err) {
-    setStatus("Ошибка Gemini: " + err.message, "error");
+    setStatus("Ошибка: " + err.message, "error");
   } finally {
     document.getElementById("recordBtn").disabled = false;
   }
